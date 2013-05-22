@@ -23,14 +23,21 @@ class durStation:
         self.namafile = nmfile
         st = read(nmfile)
         self.trace = st[0]
-        self.t10 = None
-        self.t25 = None
-        self.t33 = None
-        self.t50 = None
-        self.t75 = None
-        self.t80 = None
-        self.t100 = None
+        self.channel = self.trace.stats.channel
+        self.network = self.trace.stats.network
+        self.station = self.trace.stats.station
+        #self.t10 = None
+        #self.t25 = None
+        #self.t33 = None
+        #self.t50 = None
+        #self.t75 = None
+        #self.t80 = None
+        #self.t100 = None
         self.idxmax = -9999
+        self.duration = -9999
+
+    def __str__(self):
+        return "%4s %2s %3s %5.1f" % (self.station,self.network,self.channel,self.duration)
 
     def namafile(self):
         return self.namafile
@@ -39,13 +46,14 @@ class durStation:
         return self.trace
 
     def getDuration(self):
-        return "%5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f" % (self.t10, self.t25, self.t33, self.t50,\
-        self.t75, self.t80, self.t100)
+        #return "%5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f" % (self.t10, self.t25, self.t33, self.t50,\
+        #self.t75, self.t80, self.t100)
+        return self.duration
     
-    def setDuration(self):
-        pass
+    def setDuration(self,value):
+        self.duration = value
 
-    def getIdxMax(self,value):
+    def getIdxMax(self):
         return self.idxmax
 
     def setIdxMax(self,value):
@@ -67,6 +75,9 @@ class durProcessing:
             self.sac.append(tmp)
         print "OK"
 
+    def getStation(self,value):
+        return self.sac[value]
+    
     def infoSAC(self,value):
         for i in range(0,len(self.sac)):
             if i==value:
@@ -115,8 +126,16 @@ class durProcessing:
     def duration(self):
         for i in range(0,len(self.sac)):
             idx = self.sac[i].getIdxMax()
-            valmax = self.sac[i].data[idx]
-            val25 = 75.0 / 100.0 * valmax
+            valmax = self.sac[i].trace.data[idx]
+            val25 = 0.75 * valmax
+            idx25 = (np.abs(self.sac[i].trace.data[idx:] - val25)).argmin()
+            idx25 = idx + idx25
+            tmp = float(self.sac[i].trace.stats.delta * idx25)
+            self.sac[i].trace.stats.sac.t7 = tmp
+            dur = float(self.sac[i].trace.stats.sac.t0) - tmp
+            self.sac[i].setDuration(dur)
+
+
 
     def stage8(self):
         pass
@@ -134,6 +153,8 @@ class durProcessing:
             tr.write(nmfile,format='SAC')
 
     def getTravelTimes(self):
+        #os.chdir(os.path.abspath(os.curdir))
+        #cmd = os.path.join(os.path.abspath(os.curdir),'ttimes')
         for i in range(0,len(self.sac)):
             hipo = float(self.sac[i].trace.stats.sac.evdp) / 1000
             delta = float(self.sac[i].trace.stats.sac.gcarc)
@@ -150,6 +171,7 @@ class durProcessing:
             fid.write('-5\n')
             fid.close()
             os.system('ttimes < data.inp > /dev/null 2>&1')
+            #os.system('ttimes < data.inp')
 
             fid = open('ttimes.lst','r')
             fid.readline()
@@ -166,7 +188,12 @@ class durProcessing:
                     self.sac[i].trace.stats.sac.a = float(self.sac[i].trace.stats.sac.o) + float(tmp[2])
                 elif tmp[1]=="PP":
                     self.sac[i].trace.stats.sac.t0 = float(self.sac[i].trace.stats.sac.o) + float(tmp[2])
-            
+
+    def report(self):
+        print "================================================================================================"
+        for i in range(0,len(self.sac)):
+            print str(self.sac[i])
+        print "================================================================================================"    
 
 
 if __name__ == "__main__":
@@ -177,7 +204,9 @@ if __name__ == "__main__":
     hd.save('coba')
     hd.power2()
     hd.save('coba1')
-    hd.stage6(400)
+    hd.smooth(200)
     hd.peaks()
+    hd.duration()
     hd.save('coba2')
+    hd.report()
 
