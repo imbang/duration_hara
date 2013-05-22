@@ -1,5 +1,7 @@
 __author__ = 'bayu imbang laksono'
 
+# copas from http://www.scipy.org/Cookbook/SignalSmooth
+
 import numpy
 
 
