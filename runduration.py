@@ -1,5 +1,15 @@
 import os
 
+# Measure The Duration of High Frequency Energy Radiation
+# =======================================================
+# based on Measurement of the duration of high-frequency energy radiation
+#          and its application to determination of the magnitudes of large shallow earthquake, Tatsuko Hara,2007
+#
+# slightly modified on :
+#       - type window of smoothing process
+# ================================================================================================================
+
+
 __author__ = 'bayu imbang laksono'
 from obspy.core import read
 from glob import glob
