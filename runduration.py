@@ -170,13 +170,14 @@ class durProcessing:
 
 
 if __name__ == "__main__":
-    #hd = durProcessing('')
-    hd = durProcessing('/home/sysop/TITIPANSUGENG/1_bku2000/data','/home/sysop/TITIPANSUGENG')
+
+    hd = durProcessing()
     hd.bandpass()
     hd.putP_PP()
-    hd.save('coba1')
+    hd.save('coba')
     hd.power2()
+    hd.save('coba1')
+    hd.stage6(400)
+    hd.peaks()
     hd.save('coba2')
 
-    tmp = hd.infoSAC(0)
-    tmp.plot()
