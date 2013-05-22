@@ -20,6 +20,7 @@ class durStation:
         self.t75 = None
         self.t80 = None
         self.t100 = None
+        self.idxmax = -9999
 
     def namafile(self):
         return self.namafile
@@ -30,19 +31,31 @@ class durStation:
     def getDuration(self):
         return "%5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f" % (self.t10, self.t25, self.t33, self.t50,\
         self.t75, self.t80, self.t100)
+    
+    def setDuration(self):
+        pass
+
+    def getIdxMax(self,value):
+        return self.idxmax
+
+    def setIdxMax(self,value):
+        self.idxmax = value
 
 class durProcessing:
-    def __init__(self,directSAC='/home/sysop/TITIPANSUGENG/1_bku2000/data'):
+    def __init__(self,directSAC='/home/sysop/TITIPANSUGENG/1_bku2000/data',dirOut='/home/sysop/TITIPANSUGENG'):
         self.dirSAC = directSAC
+        self.dirout = dirOut
         self.sac = []
         self.readDirSAC()
 
     def readDirSAC(self):
         listfiles = glob(self.dirSAC+'/*.SAC')
         for fl in listfiles:
-            print "reading %s" % fl
+            #print "reading %s" % fl
+            print ".",
             tmp = durStation(fl)
             self.sac.append(tmp)
+        print "OK"
 
     def infoSAC(self,value):
         for i in range(0,len(self.sac)):
@@ -73,27 +86,39 @@ class durProcessing:
         # detect P wave
         self.getTravelTimes()
 
-    def stage5(self):
+    def peaks(self):
         # find peak
-        pass
+        for i in range(0,len(self.sac)):
+            tr = self.sac[i].trace
+            idx = np.argmax(tr.data)
+            self.sac[i].setIdxMax(idx)
+            tr.stats.sac.t8 = float(tr.stats.delta * idx)
 
-    def stage6(self):
-        pass
+    def smooth(self,value):
+        # smoothing
+        for i in range(0,len(self.sac)):
+            tr = self.sac[i].trace
+            data = tr.data.copy()
+            datasmooth = smooth(data,value,'hanning')
+            tr.data = datasmooth.copy()
 
-    def stage7(self):
-        pass
+    def duration(self):
+        for i in range(0,len(self.sac)):
+            idx = self.sac[i].getIdxMax()
+            valmax = self.sac[i].data[idx]
+            val25 = 75.0 / 100.0 * valmax
 
     def stage8(self):
         pass
 
-    def saveto(self,newdir):
-        newdir = os.path.join(self.dirSAC,newdir)
+    def save(self,newdir):
+        newdir = os.path.join(self.dirout,newdir)
         if not os.path.isdir(newdir):
             os.makedirs(newdir)
 
         for i in range(0,len(self.sac)):
             nmfile = os.path.basename(self.sac[i].namafile)
-            nmfile = nmfile +'.1'
+            #nmfile = nmfile +'.1'
             nmfile = os.path.join(newdir,nmfile)
             tr = self.sac[i].trace
             tr.write(nmfile,format='SAC')
@@ -114,7 +139,7 @@ class durProcessing:
             fid.write('-5\n')
             fid.write('-5\n')
             fid.close()
-            os.system('ttimes < data.inp')
+            os.system('ttimes < data.inp > /dev/null 2>&1')
 
             fid = open('ttimes.lst','r')
             fid.readline()
@@ -128,18 +153,20 @@ class durProcessing:
                 if len(tmp)==0:
                     break
                 if tmp[1]=="P":
-                    #print tmp[2]
                     self.sac[i].trace.stats.sac.a = float(self.sac[i].trace.stats.sac.o) + float(tmp[2])
                 elif tmp[1]=="PP":
-                    #print tmp[2]
                     self.sac[i].trace.stats.sac.t0 = float(self.sac[i].trace.stats.sac.o) + float(tmp[2])
             
 
 
 if __name__ == "__main__":
     #hd = durProcessing('')
-    hd = durProcessing('/home/sysop/TITIPANSUGENG/1_bku2000/data')
-    hd.stage2()
+    hd = durProcessing('/home/sysop/TITIPANSUGENG/1_bku2000/data','/home/sysop/TITIPANSUGENG')
+    hd.bandpass()
+    hd.putP_PP()
+    hd.save('coba1')
+    hd.power2()
+    hd.save('coba2')
 
     tmp = hd.infoSAC(0)
     tmp.plot()
