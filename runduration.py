@@ -1,5 +1,4 @@
-import os
-
+__author__ = 'bayu imbang laksono'
 # Measure The Duration of High Frequency Energy Radiation
 # =======================================================
 # based on Measurement of the duration of high-frequency energy radiation
@@ -8,9 +7,7 @@ import os
 # slightly modified on :
 #       - type window of smoothing process
 # ================================================================================================================
-
-
-__author__ = 'bayu imbang laksono'
+import os
 from obspy.core import read
 from glob import glob
 import numpy as np
@@ -26,15 +23,9 @@ class durStation:
         self.channel = self.trace.stats.channel
         self.network = self.trace.stats.network
         self.station = self.trace.stats.station
-        #self.t10 = None
-        #self.t25 = None
-        #self.t33 = None
-        #self.t50 = None
-        #self.t75 = None
-        #self.t80 = None
-        #self.t100 = None
         self.idxmax = -9999
         self.duration = -9999
+        self.p_pp = -9999
 
     def __str__(self):
         return "%4s %2s %3s %5.1f" % (self.station,self.network,self.channel,self.duration)
@@ -45,9 +36,10 @@ class durStation:
     def trace(self):
         return self.trace
 
+    def setTrace(self,trace):
+        self.trace = trace
+
     def getDuration(self):
-        #return "%5.2f %5.2f %5.2f %5.2f %5.2f %5.2f %5.2f" % (self.t10, self.t25, self.t33, self.t50,\
-        #self.t75, self.t80, self.t100)
         return self.duration
     
     def setDuration(self,value):
@@ -59,12 +51,20 @@ class durStation:
     def setIdxMax(self,value):
         self.idxmax = value
 
+    def getP_PP(self):
+        return self.p_pp
+
+    def setP_PP(self,dt):
+        self.p_pp = dt
+
+
 class durProcessing:
     def __init__(self,directSAC='/home/sysop/TITIPANSUGENG/1_bku2000/data',dirOut='/home/sysop/TITIPANSUGENG'):
         self.dirSAC = directSAC
         self.dirout = dirOut
         self.sac = []
         self.readDirSAC()
+        self.stacnt = 0
 
     def readDirSAC(self):
         listfiles = glob(self.dirSAC+'/*.SAC')
@@ -73,22 +73,35 @@ class durProcessing:
             print ".",
             tmp = durStation(fl)
             self.sac.append(tmp)
+        self.stacnt = len(self.sac)
         print "OK"
 
     def getStation(self,value):
         return self.sac[value]
     
-    def infoSAC(self,value):
-        for i in range(0,len(self.sac)):
-            if i==value:
-                return self.sac[i].trace
+    def plot(self,idx):
+        try:
+            id = int(idx)
+            self._plot(id)
+        except:
+            for i in range(0,len(self.sac)):
+                self._plot(i)
 
-    def plot(self,value):
-        for i in range(0,len(self.sac)):
-            if i==value:
-                return self.sac[i].trace
+    def _plot(self,i):
+        self.saveToDir('tmp')
+        newdir = os.path.join(self.dirout,'tmp')
+        nmfile = os.path.basename(self.sac[i].namafile)
+        nmfile = os.path.join(newdir,nmfile)
+        fid = open('plot.m','w')
+        fid.write('r %s\n' % nmfile)
+        fid.write('qdp off\n')
+        fid.write('ppk\n')
+        fid.write('q\n')
+        fid.close()
+        os.system('sac < plot.m')
+        os.unlink('plot.m')
 
-    def stage1(self):
+    def rmean(self):
         pass
 
     def bandpass(self,fn=2,fx=4):
@@ -103,9 +116,13 @@ class durProcessing:
             tmp = np.power(tr.data,2)
             tr.data = tmp.copy()
 
-    def putP_PP(self):
-        # detect P wave
-        self.getTravelTimes()
+    def putP_PP(self,idx):
+        try:
+            id = int(idx)
+            self._getTravelTimes(id)
+        except:
+            for i in range(0,len(self.sac)):
+                self._getTravelTimes(i)
 
     def peaks(self):
         # find peak
@@ -135,59 +152,67 @@ class durProcessing:
             dur = float(self.sac[i].trace.stats.sac.t0) - tmp
             self.sac[i].setDuration(dur)
 
+    def normalize(self,idx):
+        try:
+            id = int(idx)
+            self._normalize(id)
+        except:
+            for i in range(0,len(self.sac)):
+                self._normalize(i)
+
+    def _normalize(self,i):
+        tr = self.sac[i].trace
+        tr.normalize()
+        self.sac[i].setTrace(tr)
 
 
-    def stage8(self):
-        pass
-
-    def save(self,newdir):
+    def saveToDir(self,newdir):
         newdir = os.path.join(self.dirout,newdir)
         if not os.path.isdir(newdir):
             os.makedirs(newdir)
 
         for i in range(0,len(self.sac)):
             nmfile = os.path.basename(self.sac[i].namafile)
-            #nmfile = nmfile +'.1'
             nmfile = os.path.join(newdir,nmfile)
             tr = self.sac[i].trace
             tr.write(nmfile,format='SAC')
 
-    def getTravelTimes(self):
-        #os.chdir(os.path.abspath(os.curdir))
-        #cmd = os.path.join(os.path.abspath(os.curdir),'ttimes')
-        for i in range(0,len(self.sac)):
-            hipo = float(self.sac[i].trace.stats.sac.evdp) / 1000
-            delta = float(self.sac[i].trace.stats.sac.gcarc)
-            fid = open('data.inp','w')
-            fid.write('n\n')
-            fid.write('/home/sysop/iaspei-tau/tables/iasp91\n')
-            fid.write('P\n')
-            fid.write('PP\n')
-            fid.write('\n')
-            fid.write('n\n')
-            fid.write('%f\n' % hipo)
-            fid.write('%f\n' % delta)
-            fid.write('-5\n')
-            fid.write('-5\n')
-            fid.close()
-            os.system('ttimes < data.inp > /dev/null 2>&1')
-            #os.system('ttimes < data.inp')
 
-            fid = open('ttimes.lst','r')
-            fid.readline()
-            fid.readline()
-            fid.readline()
-            fid.readline()
-            fid.readline()
-            while 1:
-                tmp = fid.readline()
-                tmp = tmp.split()
-                if len(tmp)==0:
-                    break
-                if tmp[1]=="P":
-                    self.sac[i].trace.stats.sac.a = float(self.sac[i].trace.stats.sac.o) + float(tmp[2])
-                elif tmp[1]=="PP":
-                    self.sac[i].trace.stats.sac.t0 = float(self.sac[i].trace.stats.sac.o) + float(tmp[2])
+    def _getTravelTimes(self,i):
+        hipo = float(self.sac[i].trace.stats.sac.evdp) / 1000
+        delta = float(self.sac[i].trace.stats.sac.gcarc)
+        fid = open('data.inp','w')
+        fid.write('n\n')
+        fid.write('/home/sysop/iaspei-tau/tables/iasp91\n')
+        fid.write('P\n')
+        fid.write('PP\n')
+        fid.write('\n')
+        fid.write('n\n')
+        fid.write('%f\n' % hipo)
+        fid.write('%f\n' % delta)
+        fid.write('-5\n')
+        fid.write('-5\n')
+        fid.close()
+        os.system('ttimes < data.inp > /dev/null 2>&1')
+
+        fid = open('ttimes.lst','r')
+        fid.readline()
+        fid.readline()
+        fid.readline()
+        fid.readline()
+        fid.readline()
+        while 1:
+            tmp = fid.readline()
+            tmp = tmp.split()
+            if len(tmp)==0:
+                break
+            if tmp[1]=="P":
+                tmp1 = float(tmp[2])
+                self.sac[i].trace.stats.sac.a = float(self.sac[i].trace.stats.sac.o) + tmp1
+            elif tmp[1]=="PP":
+                tmp2 = float(tmp[2])
+                self.sac[i].trace.stats.sac.t0 = float(self.sac[i].trace.stats.sac.o) + tmp2
+                self.sac[i].setP_PP(tmp2 - tmp1)
 
     def report(self):
         print "================================================================================================"
