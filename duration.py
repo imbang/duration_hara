@@ -25,12 +25,19 @@ class durStation:
         self.station = self.trace.stats.station
         self.idxmax = -9999
         self.idxPP = -9999
-        self.duration = -9999
+        self.idxP = -9999
+        if self.trace.stats.sac.t7<>self.trace.stats.sac.t0:
+            self.duration = self.trace.stats.sac.t0 - self.trace.stats.sac.t7
+        else:
+            self.duration = -9999
         self.p_pp = -9999
 
     def __str__(self):
         return "%4s %2s %3s %5.1f" % (self.station,self.network,self.channel,self.duration)
 
+    def basename(self):
+        return os.path.basename(self.namafile)
+    
     def namafile(self):
         return self.namafile
     
@@ -58,6 +65,12 @@ class durStation:
     def setIdxPP(self,value):
         self.idxPP = value
 
+    def getIdxP(self):
+        return self.idxP
+
+    def setIdxP(self,value):
+        self.idxP = value
+
     def getP_PP(self):
         return self.p_pp
 
@@ -70,11 +83,38 @@ class Duration:
         self.dirSAC = directSAC
         self.dirout = dirOut
         self.sac = []
-        self._readDirSAC()
         self.stacnt = 0
+        self.isLoad = False
 
-    def _readDirSAC(self):
-        listfiles = glob(self.dirSAC+'/*.SAC')
+    def setDirSAC(self,dir):
+        self.dirSAC = dir
+
+    def setDirOut(self,dir):
+        self.dirout = dir
+        
+    def loadSAC(self):
+        self._readDirSAC(self.dirSAC)
+        self.isLoad = True
+
+    def reloadStage1(self):
+        dir = os.path.join(self.dirout,'stage1')
+        del self.sac
+        self.sac = []
+        self._readDirSAC(dir)
+
+    def reloadStage2(self):
+        dir = os.path.join(self.dirout,'stage2')
+        del self.sac
+        self.sac = []
+        self._readDirSAC(dir)
+
+    def reloadStage3(self):
+        dir = os.path.join(self.dirout,'stage3')
+        del self.sac
+        self._readDirSAC(dir)
+
+    def _readDirSAC(self,dir):
+        listfiles = glob(dir+'/*.SAC')
         for fl in listfiles:
             #print "reading %s" % fl
             print ".",
@@ -82,6 +122,12 @@ class Duration:
             self.sac.append(tmp)
         self.stacnt = len(self.sac)
         print "OK"
+
+    def _readFileSAC(self,dir,idx):
+        fl = os.path.join(dir,self.sac[idx].basename())
+        tmp = durStation(fl)
+        self.sac[idx] = tmp
+
 
     def getStation(self,value):
         return self.sac[value]
@@ -106,11 +152,13 @@ class Duration:
         fid.write('wh\n')
         fid.write('q\n')
         fid.close()
+        print i,str(self.sac[i])
         os.system('sac < plot.m')
         os.unlink('plot.m')
+        self._readFileSAC(newdir,i)
 
     def delete(self,idx):
-        pass
+        del self.sac[idx]
 
     def list(self):
         pass
@@ -130,25 +178,22 @@ class Duration:
     def _adjustP(self,i):
         self.sac[i].trace.stats.sac.t0 = float(self.sac[i].trace.stats.sac.a)  + self.sac[i].getP_PP()
 
-    def reload(self):
-        self._readDirSAC()
-
     def clear(self):
         pass
 
     def stage1(self):
         self.bandpass()
-        self.putP_PP()
+        self.putP_PP('all')
         self.saveToDir('stage1')
 
     def stage2(self):
         self.power2()
         self.normalize('all')
-        self.peaks()
         self.saveToDir('stage2')
 
     def stage3(self,smt):
         self.smooth(smt)
+        self.peaks()
         self.duration()
         self.saveToDir('stage3')
 
@@ -176,9 +221,22 @@ class Duration:
         # find peak
         for i in range(0,len(self.sac)):
             tr = self.sac[i].trace
-            idx = np.argmax(tr.data)
-            self.sac[i].setIdxMax(idx)
-            tr.stats.sac.t8 = float(tr.stats.delta * idx)
+            ta = self.sac[i].getIdxP()
+            #if i==0: print ta
+            tpp = self.sac[i].getIdxPP()
+            #if i==0: print tpp
+
+            t = np.linspace(0, tr.stats.delta * tr.stats.npts, tr.stats.npts)
+            tx = t[(t>=ta)&(t<=tpp)]
+            #if i==0: print tr.stats.sac.a,tr.stats.sac.t0,tx[0],tx[len(tx)-1]
+            idxa = np.where(t==tx[0])[0][0]
+            idxpp = np.where(t==tx[len(tx)-1])[0][0]
+            #if i==0: print "idxa,idxpp,",idxa,idxpp
+            #idx = np.argmax(tr.data[idxa:idxpp])
+            idx = np.argmax(tr.data[idxa:idxpp])
+            #if i==0: print idx
+            self.sac[i].setIdxMax(idxa+idx)
+            tr.stats.sac.t8 = float(tr.stats.delta * (idxa+idx))
 
     def smooth(self,value):
         # smoothing
@@ -220,7 +278,7 @@ class Duration:
             os.makedirs(newdir)
 
         for i in range(0,len(self.sac)):
-            nmfile = os.path.basename(self.sac[i].namafile)
+            nmfile = self.sac[i].basename()
             nmfile = os.path.join(newdir,nmfile)
             tr = self.sac[i].trace
             tr.write(nmfile,format='SAC')
@@ -256,11 +314,20 @@ class Duration:
                 break
             if tmp[1]=="P":
                 tmp1 = float(tmp[2])
+                idx1 = int (tmp1 / self.sac[i].trace.stats.delta)
+                #if i==0: print "P",idx1
+                #self.sac[i].setIdxP(idx1)
+                self.sac[i].setIdxP(float(self.sac[i].trace.stats.sac.o) + tmp1)
                 self.sac[i].trace.stats.sac.a = float(self.sac[i].trace.stats.sac.o) + tmp1
             elif tmp[1]=="PP":
                 tmp2 = float(tmp[2])
+                idx2 = int (tmp2 / self.sac[i].trace.stats.delta)
+                #if i==0: print "PP",idx2
+                #self.sac[i].setIdxPP(idx2)
+                self.sac[i].setIdxPP(float(self.sac[i].trace.stats.sac.o) + tmp2)
                 self.sac[i].trace.stats.sac.t0 = float(self.sac[i].trace.stats.sac.o) + tmp2
                 self.sac[i].setP_PP(tmp2 - tmp1)
+                break
 
     def report(self):
         print "============================================================="

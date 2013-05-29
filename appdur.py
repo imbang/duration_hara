@@ -1,0 +1,10 @@
+import duration as dr
+hd = dr.Duration()
+hd.setDirSAC('/home/sysop/TITIPANSUGENG/1_bku2000/data')
+hd.setDirOut('/home/sysop/dur')
+hd.loadSAC()
+hd.stage1()
+hd.stage2()
+hd.stage3(300)
+hd.plot('all')
+hd.report()
