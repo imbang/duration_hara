@@ -79,7 +79,7 @@ class durStation:
 
 
 class Duration:
-    def __init__(self,directSAC='/home/sysop/TITIPANSUGENG/1_bku2000/data',dirOut='/home/sysop/TITIPANSUGENG'):
+    def __init__(self,directSAC=None,dirOut=None):
         self.dirSAC = directSAC
         self.dirout = dirOut
         self.sac = []
@@ -179,7 +179,8 @@ class Duration:
         self.sac[i].trace.stats.sac.t0 = float(self.sac[i].trace.stats.sac.a)  + self.sac[i].getP_PP()
 
     def clear(self):
-        pass
+        del self.sac
+        self.sac=[]
 
     def stage1(self):
         self.bandpass()
@@ -339,15 +340,6 @@ class Duration:
 if __name__ == "__main__":
 
     hd = durProcessing()
-    hd.bandpass()
-    hd.putP_PP('all')
-    hd.saveToDir('coba')
-    hd.power2()
-    hd.normalize('all')
-    hd.peaks()
-    hd.saveToDir('coba1')
-    hd.smooth(200)
-    hd.duration()
-    hd.saveToDir('coba2')
+
     hd.report()
 
