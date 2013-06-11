@@ -6,9 +6,14 @@ __author__ = 'bayu imbang laksono'
 #
 # slightly modified on :
 #       - type window of smoothing process
+
+# next tasks :
+# 1. RMEAN
+# 2. Error when DELETE
+# 3.
 # ================================================================================================================
 import os
-from obspy.core import read
+from obspy.core import read,UTCDateTime
 from glob import glob
 import numpy as np
 
@@ -33,7 +38,10 @@ class durStation:
         self.p_pp = -9999
 
     def __str__(self):
-        return "%4s %2s %3s %5.1f" % (self.station,self.network,self.channel,self.duration)
+        return "%4s %2s %3s %.3f %5.1f" % (self.station,self.network,self.channel,self.trace.stats.sac.gcarc,self.duration)
+
+    def getDelta(self):
+        return self.trace.stats.sac.gcarc
 
     def basename(self):
         return os.path.basename(self.namafile)
@@ -83,8 +91,12 @@ class Duration:
         self.dirSAC = directSAC
         self.dirout = dirOut
         self.sac = []
+        self.stack = None
         self.stacnt = 0
         self.isLoad = False
+        self.isSorted = False
+        self.isStacked = False
+
 
     def setDirSAC(self,dir):
         self.dirSAC = dir
@@ -95,6 +107,9 @@ class Duration:
     def loadSAC(self):
         self._readDirSAC(self.dirSAC)
         self.isLoad = True
+        self.isSorted = False
+        self.isStacked = False
+        self.stack = None
 
     def reloadStage1(self):
         dir = os.path.join(self.dirout,'stage1')
@@ -165,6 +180,80 @@ class Duration:
     
     def rmean(self):
         pass
+
+    def sort(self):
+        ok = False
+        self.isSorted = True
+        while not ok:
+            ok = True
+            for j in range(len(self.sac)-1):
+                tr1 = self.sac[j].getDelta()
+                tr2 = self.sac[j+1].getDelta()
+                if tr1>tr2:
+                    tmp = self.sac[j]
+                    self.sac[j] = self.sac[j+1]
+                    self.sac[j+1] = tmp
+                    ok = False
+
+
+    def stacking(self):
+        if not self.isSorted:
+            print "sorting traces..."
+            self.sort()
+
+        dtPPP = self.sac[len(self.sac)-1].getP_PP() + 10.0
+        delta = self.sac[len(self.sac)-1].trace.stats.delta
+        nptsPPP = round(dtPPP / delta)
+        t = np.linspace(0,nptsPPP * delta, nptsPPP)
+        yy1 = np.zeros(nptsPPP)
+
+        if not self.isStacked:
+            self.isStacked = True
+            self.stack = self.sac[0].trace.copy()
+            self.stack.stats.starttime = ('2000-01-01T0:0:0')
+
+        for i in range(0,len(self.sac)):
+            a5 = self.sac[i].trace.stats.sac.a - 5.0
+            tdur = a5 + t
+            deltax = self.sac[i].trace.stats.delta
+            npts = self.sac[i].trace.stats.npts
+            x = np.linspace(0,npts * deltax, npts)
+            y = self.sac[i].trace.data.copy()
+            yy = np.interp(tdur,x,y)
+            yy1 = np.add(yy1,yy)
+            self.sac[i].trace.data = yy.copy()
+            self.sac[i].trace.stats.npts = len(yy)
+            self.sac[i].trace.stats.sac.a = 5.0
+            self.sac[i].trace.stats.sac.t0 = self.sac[i].trace.stats.sac.t0 - a5
+            self.sac[i].trace.stats.sac.t8 = self.sac[i].trace.stats.sac.t8 - a5
+            self.sac[i].trace.stats.sac.t7 = self.sac[i].trace.stats.sac.t7 - a5
+
+        yy1 = yy1 / len(self.sac)
+        self.stack.data = yy1.copy()
+        self.stack.stats.sac.a = 5.0
+        self.stack.stats.sac.t0 = -12345
+        self.stack.stats.sac.t8 = -12345
+        self.stack.stats.sac.t7 = -12345
+        self.stack.stats.network = "XX"
+        self.stack.stats.station = "XXXX"
+
+        idx = np.argmax(self.stack.data)
+        self.stack.stats.sac.t8 = float(self.stack.stats.delta * idx)
+
+        valmax = self.stack.data[idx]
+        val25 = 0.75 * valmax
+        idx25 = (np.abs(self.stack.data[idx:] - val25)).argmin()
+        idx25 = idx + idx25
+        tmp = float(self.stack.stats.delta * idx25)
+        self.stack.stats.sac.t7 = tmp
+
+        self.stack.stats.update()
+        newdir = os.path.join(self.dirout,'stack')
+        if not os.path.isdir(newdir):
+            os.makedirs(newdir)
+        nmfile = os.path.join(newdir,'stack.SAC')
+        self.stack.write(nmfile,format='SAC')
+        print "save to dir stack --------"
 
     def adjustP(self,idx):
         try:
@@ -256,7 +345,8 @@ class Duration:
             idx25 = idx + idx25
             tmp = float(self.sac[i].trace.stats.delta * idx25)
             self.sac[i].trace.stats.sac.t7 = tmp
-            dur = float(self.sac[i].trace.stats.sac.t0) - tmp
+#            dur = float(self.sac[i].trace.stats.sac.t0) - tmp
+            dur = tmp - float(self.sac[i].trace.stats.sac.a)
             self.sac[i].setDuration(dur)
 
     def normalize(self,idx):
@@ -290,7 +380,11 @@ class Duration:
         delta = float(self.sac[i].trace.stats.sac.gcarc)
         fid = open('data.inp','w')
         fid.write('n\n')
-        fid.write('/home/sysop/iaspei-tau/tables/iasp91\n')
+        nmtable='/home/sysop/iaspei-tau/tables/iasp91'
+        if not os.path.exists(nmtable):
+            print "nama file model kecepatan tidak ditemukan..."
+            return
+        fid.write(nmtable+'\n')
         fid.write('P\n')
         fid.write('PP\n')
         fid.write('\n')
