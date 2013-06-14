@@ -381,9 +381,9 @@ class Duration:
         fid = open('data.inp','w')
         fid.write('n\n')
         nmtable='/home/sysop/iaspei-tau/tables/iasp91'
-        if not os.path.exists(nmtable):
-            print "nama file model kecepatan tidak ditemukan..."
-            return
+        #if not os.path.exists(nmtable):
+        #    print "nama file model kecepatan tidak ditemukan..."
+        #    return
         fid.write(nmtable+'\n')
         fid.write('P\n')
         fid.write('PP\n')
